@@ -8,8 +8,9 @@
 #include <unistd.h>
 
 void usage(FILE *stream, const char *cmnd, int exitcode);
-int sendall(int s, char *buf, int *len);
 int connectToServer(const char *server, const char *port);
+int send_req(FILE *write_fd, int sfd, const char *user, const char *message, const char *img_url);
+int read_resp(FILE *read_fd);
 
 int main(const int argc, const char * const argv[])
 {
@@ -21,6 +22,8 @@ int main(const int argc, const char * const argv[])
     const char *img_url;
     int verbose;
     int sfd;
+    FILE *write_fd = NULL;
+    FILE *read_fd = NULL;
 
     smc_parsecommandline(argc, argv, usage, &server, &port, &user, &message,&img_url, &verbose);
 
@@ -33,7 +36,28 @@ int main(const int argc, const char * const argv[])
 
     sfd = connectToServer(server, port);
 
-    close(sfd);
+    write_fd = fdopen(sfd, "w");
+    if (write_fd == NULL){
+        fprintf(stderr, "Could not open write fd\n");
+        fclose(write_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    send_req(write_fd,sfd,user,message,img_url);
+    shutdown(sfd,SHUT_WR);
+
+    read_fd = fdopen(sfd, "r");
+    if (read_fd == NULL){
+        fprintf(stderr, "Could not open read fd\n");
+        fclose(write_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    read_resp(read_fd);
+
+    fclose(write_fd);
+    fclose(read_fd);
+    //close(sfd);
 
     printf("SUCCCESSS\n");
 
@@ -111,3 +135,57 @@ void usage(FILE *stream, const char *cmnd, int exitcode)
     fprintf(stream, "        -h, --help\n");
     exit(exitcode);
 }
+
+int send_req(FILE *write_fd, int sfd, const char *user, const char *message, const char *img_url){
+
+    const char *pre_user = "user=";
+    const char *pre_message = "\n";
+    const char *pre_img_url;
+
+
+    if (img_url != NULL) {
+        pre_img_url = "\nimg=";
+    }else{
+        pre_img_url="";
+        img_url="";
+    }
+
+    //size_t msg_length = strlen(pre_user) + strlen(user) + strlen(pre_img_url) + strlen(img_url) + strlen(pre_message) + strlen(message) + 1;
+    //char *formatedString =  calloc(msg_length, sizeof(char));
+    //snprintf(formatedString,msg_length, "%s%s%s%s%s%s",pre_user,user,pre_img_url,img_url,pre_message,message);
+    //fprintf(write_fd, "%s",formatedString);
+    //free(formatedString);
+
+    fprintf(write_fd, "%s%s%s%s%s%s",pre_user,user,pre_img_url,img_url,pre_message,message);
+
+    fflush(write_fd);
+
+    return 0;
+
+}
+
+int read_resp(FILE *read_fd){
+    //parsing stage = GET_STATUS;
+    char *line = NULL;
+    //char file_name[NAME_MAX];
+    long status = -1;
+    long file_len = 0;
+    long counter = 0;
+    ssize_t read = -1;
+    size_t len = 0;
+    FILE *fp = NULL;
+    char *value;
+
+    if ((getline(&line,&len,read_fd)) != -1){
+        printf("line: %s",line);
+        strtok(line, "=");
+        value = strtok(NULL, "\n");
+
+        printf("value: %s",value);
+
+    }
+
+
+}
+
+int parse_status
