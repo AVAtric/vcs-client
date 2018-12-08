@@ -1,3 +1,22 @@
+/* ================================================================ */
+/**
+ * @file simple_message_client.c
+ * TCP/IP Client for bulletin board.
+ *
+ * A simple TCP/IP client to demonstrate how sockets work.
+ *
+ * @author ic18b081@technikum-wien.at
+ * @author ic17b503@technikum-wien.at
+ * @date 2018/12/08
+ */
+/*
+ * $Id:$
+ */
+
+/*
+ * -------------------------------------------------------------- includes --
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -8,17 +27,49 @@
 #include <unistd.h>
 //#include <arpa/inet.h>    //Can be used for printf(IP);
 
-#define print_v(fmt, ...)                                                                                          \
-  if (verbose)                                                                                               \
+/*
+ * --------------------------------------------------------------- defines --
+ */
+
+#define print_v(fmt, ...)                                   \
+  if (verbose)                                              \
     fprintf(stderr, "%s(): " fmt, __func__, __VA_ARGS__);
 
+/*
+* -------------------------------------------------------------- typedefs --
+*/
+
+/*
+ * --------------------------------------------------------------- globals --
+ */
+
 static int verbose;
+
+/*
+ * ------------------------------------------------- function declarations --
+ */
 
 void usage(FILE *stream, const char *cmnd, int exitcode);
 int connectToServer(const char *server, const char *port);
 int send_req(FILE *write_fd, const char *user, const char *message, const char *img_url);
 int read_resp(FILE *read_fd);
 
+/*
+ * ------------------------------------------------------------- functions --
+ */
+
+/**
+ * \brief Main entry point of program.
+ *
+ * This function is the main entry point of the program.
+ *
+ * \param argc - number of command line arguments.
+ * \param argv - array of command line arguments.
+ *
+ * \return Information about success or failure in the execution
+ * \retval EXIT_FAILURE failed execution.
+ * \retval EXIT_SUCCESS successful execution
+ */
 int main(const int argc, const char *const argv[]) {
     const char *server;
     const char *port;
@@ -62,6 +113,16 @@ int main(const int argc, const char *const argv[]) {
     return 0;
 }
 
+/**
+ * \brief Create socket and connect
+ *
+ * \param server - number of command line arguments.
+ * \param port - string with information of the port
+ *
+ * \return Information about success or failure in the execution
+ * \retval EXIT_FAILURE failed execution.
+ * \retval EXIT_SUCCESS successful execution
+ */
 int connectToServer(const char *server, const char *port) {
 
     int sfd, s;
@@ -178,7 +239,7 @@ int read_resp(FILE *read_fd) {
 
         counter = file_len;
 
-        //get data
+        //read/write data
         while (counter != 0) {
             toprocess = counter;
             if (toprocess > buffersize) {
@@ -200,3 +261,7 @@ int read_resp(FILE *read_fd) {
     }
     return 0;
 }
+
+/*
+ * =================================================================== eof ==
+ */
