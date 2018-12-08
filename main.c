@@ -6,35 +6,32 @@
 #include <string.h>
 #include <simple_message_client_commandline_handling.h>
 #include <unistd.h>
+//#include <arpa/inet.h>    //Can be used for printf(IP);
+
+#define print_v(fmt, ...)                                                                                          \
+  if (verbose)                                                                                               \
+    fprintf(stderr, "%s(): " fmt, __func__, __VA_ARGS__);
+
+static int verbose;
 
 void usage(FILE *stream, const char *cmnd, int exitcode);
-
 int connectToServer(const char *server, const char *port);
-
-int send_req(FILE *write_fd, int sfd, const char *user, const char *message, const char *img_url);
-
+int send_req(FILE *write_fd, const char *user, const char *message, const char *img_url);
 int read_resp(FILE *read_fd);
 
 int main(const int argc, const char *const argv[]) {
-
     const char *server;
     const char *port;
     const char *user;
     const char *message;
     const char *img_url;
-    int verbose;
+
     int sfd;
     FILE *write_fd = NULL;
     FILE *read_fd = NULL;
 
     smc_parsecommandline(argc, argv, usage, &server, &port, &user, &message, &img_url, &verbose);
-
-    printf("Server:  %s\n", server);
-    printf("Port:    %s\n", port);
-    printf("User:    %s\n", user);
-    printf("Message: %s\n", message);
-    printf("Img_url: %s\n", img_url);
-    printf("Verbose: %i\n", verbose);
+    print_v("Using the following options: server=%s port=%s, user=%s, img_url=%s, message=%s\n", server, port, user, img_url, message);
 
     sfd = connectToServer(server, port);
 
@@ -45,8 +42,9 @@ int main(const int argc, const char *const argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    send_req(write_fd, sfd, user, message, img_url);
+    send_req(write_fd, user, message, img_url);
     shutdown(sfd, SHUT_WR);
+    print_v("%s", "Closed write part of socket\n")
 
     read_fd = fdopen(sfd, "r");
     if (read_fd == NULL) {
@@ -59,9 +57,7 @@ int main(const int argc, const char *const argv[]) {
 
     fclose(write_fd);
     fclose(read_fd);
-    //close(sfd);
-
-    printf("SUCCCESSS\n");
+    close(sfd);
 
     return 0;
 }
@@ -83,12 +79,18 @@ int connectToServer(const char *server, const char *port) {
     }
 
     for (rp = result; rp != NULL; rp = rp->ai_next) {
-        sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        if (sfd == -1)
-            continue;
-        if (connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1)
-            break; /* Success */
+        print_v("Connecting to IPv%d address.\n", rp->ai_family == PF_INET6 ? 6 : 4);
 
+        sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (sfd == -1) {
+            print_v("%s\n","Failed");
+            continue;
+        }
+        if (connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1) {
+            print_v("%s\n","Success");
+            break; /* Success */
+        } else
+            print_v("%s\n","Failed");
     }
 
     if (rp == NULL) { /* No address succeeded */
@@ -113,12 +115,10 @@ void usage(FILE *stream, const char *cmnd, int exitcode) {
     exit(exitcode);
 }
 
-int send_req(FILE *write_fd, int sfd, const char *user, const char *message, const char *img_url) {
-
+int send_req(FILE *write_fd, const char *user, const char *message, const char *img_url) {
     const char *pre_user = "user=";
     const char *pre_message = "\n";
     const char *pre_img_url;
-
 
     if (img_url != NULL) {
         pre_img_url = "\nimg=";
@@ -127,14 +127,8 @@ int send_req(FILE *write_fd, int sfd, const char *user, const char *message, con
         img_url = "";
     }
 
-    //size_t msg_length = strlen(pre_user) + strlen(user) + strlen(pre_img_url) + strlen(img_url) + strlen(pre_message) + strlen(message) + 1;
-    //char *formatedString =  calloc(msg_length, sizeof(char));
-    //snprintf(formatedString,msg_length, "%s%s%s%s%s%s",pre_user,user,pre_img_url,img_url,pre_message,message);
-    //fprintf(write_fd, "%s",formatedString);
-    //free(formatedString);
-
+    print_v("Going to send the following message:%s%s%s%s%s%s\n", pre_user, user, pre_img_url, img_url, pre_message, message)
     fprintf(write_fd, "%s%s%s%s%s%s", pre_user, user, pre_img_url, img_url, pre_message, message);
-
     fflush(write_fd);
 
     return 0;
@@ -142,7 +136,7 @@ int send_req(FILE *write_fd, int sfd, const char *user, const char *message, con
 }
 
 int read_resp(FILE *read_fd) {
-    const int buffersize = 200;
+    const int buffersize = 255;
     char *line = NULL;
     char buffer[buffersize];
     char *file_name = NULL;
@@ -154,68 +148,55 @@ int read_resp(FILE *read_fd) {
     FILE *fp = NULL;
 
     if ((getline(&line, &len, read_fd)) != -1) {
-        printf("line: %s", line);
         strtok(line, "=");
         status = strtol(strtok(NULL, "\n"), NULL, 10);
-
-        printf("status: %ld", status);
+        print_v("Obtained and parsed Status from server\nStatus: %ld\n",status);
     } else {
-        printf("Cannot read Status");
+        fprintf(stderr, "Received nothing from Server\n");
     }
 
     while ((getline(&line, &len, read_fd)) != -1) {
-        //get file
-        printf("line: %s", line);
+        //get file_name
         strtok(line, "=");
         file_name = strtok(NULL, "\n");
+        print_v("Obtained and parsed Filename from server\nFilename: %s\n",file_name);
 
-        printf("file_name: %s", file_name);
-
-        //create/open file
+        //open file
         if ((fp = fopen(file_name, "w+")) == NULL) {
+            fprintf(stderr, "Could not open File\n");
             break;
         }
 
-        //get len
+        //get file_len
         if ((getline(&line, &len, read_fd)) != -1) {
-            printf("line: %s", line);
             strtok(line, "=");
             file_len = strtol(strtok(NULL, "\n"), NULL, 10);
-
-            printf("len: %ld", file_len);
+            print_v("Obtained and parsed File length from server\nFile length: %ld\n",file_len);
         } else {
-            printf("Cannot read len");
+            fprintf(stderr, "Could not read Filename\n");
         }
 
         counter = file_len;
 
+        //get data
         while (counter != 0) {
-            //get data
-            // memset(buffer, '\0', buffersize);
             toprocess = counter;
-            if (toprocess > buffersize){
+            if (toprocess > buffersize) {
                 toprocess = buffersize;
             }
 
-            fread(buffer, 1, (size_t)toprocess, read_fd);
-
-            printf("\n\n%ld - %zd\n\n",toprocess,(size_t)toprocess);
+            // read [buffersize] from file descriptor
+            fread(buffer, 1, (size_t) toprocess, read_fd);
             counter -= toprocess;
 
-            printf("%s", buffer);
-
-            fwrite(buffer, sizeof(char), (size_t)toprocess, fp);
-
-
-            }
+            // write [buffersize] bytes to file
+            fwrite(buffer, sizeof(char), (size_t) toprocess, fp);
+            print_v("Copied %ld Bytes to File - %ld Bytes left\n",toprocess,counter);
+        }
 
         if (fclose(fp) == EOF) {
             break;
-
         }
-
     }
-
     return 0;
-
 }
